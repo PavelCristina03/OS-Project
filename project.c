@@ -50,7 +50,7 @@ void printAccessRights(struct stat status, char *filePath) {
     printf("\tExecute - %s\n\n", (status.st_mode & S_IXOTH) ? "yes" : "no");
 }
 
-void processOptions(struct stat status, char *filePath) {
+void processFileOptions(struct stat status, char *filePath) {
 
     char options[20];
 
@@ -85,7 +85,7 @@ void processOptions(struct stat status, char *filePath) {
 
 
         case 'a':
-            printf("Access rights:\n");
+            printf("Access rights:");
             printAccessRights(status, filePath);
             break;
 
@@ -111,6 +111,71 @@ void processOptions(struct stat status, char *filePath) {
     }
 }
 
+void processLinkOptions(struct stat status, char *filePath) {
+
+    char options[20];
+
+    do{
+        printf("The options should be preceded by a '-'\n");
+        scanf("%20s", options);
+    }while(options[0] != '-');
+
+    int nrOfOptions = strlen(options);
+
+    int deleted = 0;
+
+    //we will start iterating through the options starting from 1, since the first character inputed must be '-'
+    for(int i = 1; i < nrOfOptions && !deleted; i++) {
+        switch (options[i])
+        {
+        case 'n':
+            printf("Name of the link: %s\n", filePath);
+            break;
+
+
+        case 'd':
+            printf("Link size: %ld bytes\n", status.st_size);
+            break;
+
+
+        case 't': ;
+        
+            struct stat targetSt;
+            //we use stat instead of lstat to get the target file's size
+            if(stat(filePath, &targetSt) == -1) {
+                perror("Stat failed.\n");
+                break;
+            }
+
+            printf("Target file size: %ld bytes\n", targetSt.st_size);
+
+            break;
+
+        case 'a':
+            printf("Access rights:");
+            printAccessRights(status, filePath);
+            break;
+
+
+        case 'l':
+            if(unlink(filePath) == -1) {
+                perror("Failed to remove the link.\n");
+                break;
+            }
+
+            printf("Link removed successfully.\n");
+
+            deleted = 1;
+            break;
+
+
+        default:
+            break;
+        }
+    }
+
+}
+
 
 int main(int argc, char **argv) {
 
@@ -122,25 +187,27 @@ int main(int argc, char **argv) {
     for(int i = 1; i < argc; i++) {
 
         struct stat status;
-        lstat(argv[i], &status);
+        if(lstat(argv[i], &status) == -1) {
+            perror("lstat failed.\n");
+        }
         
         if (S_ISREG(status.st_mode)) {
             printf("\n%s - REGULAR FILE\n", argv[i]);
 
             printFileMenu();
-            processOptions(status, argv[i]);
+            processFileOptions(status, argv[i]);
 
         } else if (S_ISDIR(status.st_mode)) {
             printf("\n%s - DIRECTORY\n", argv[i]);
 
             printDirectoryMenu();
-            //processOptions();
+            //processMenuOptions();
 
         } else if (S_ISLNK(status.st_mode)) {
             printf("\n%s - SYMBOLIC LINK.\n", argv[i]);
 
             printLinkMenu();
-            //processOptions();
+            processLinkOptions(status, argv[i]);
 
         } else {
             printf("\n%s - UNKNOWN.\n", argv[i]);
