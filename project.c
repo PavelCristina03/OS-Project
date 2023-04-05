@@ -4,6 +4,7 @@
 #include <string.h>
 #include <time.h>
 #include <unistd.h>
+#include <dirent.h>
 
 void printFileMenu() {
     printf("----FILE-MENU----\n");
@@ -14,13 +15,17 @@ void printFileMenu() {
     printf("\ta - access rights\n");
     printf("\tl - create symbolic link\n");
     printf("Please enter your options.\n");
+    printf("The options should be preceded by a '-'\n");
 }
 
 void printDirectoryMenu() {
     printf("----DIRECTORY-MENU----\n");
     printf("\tn - name\n");
     printf("\td - size\n");
+    printf("\ta - access rights\n");
+    printf("\tc - number of C file entries\n");
     printf("Please enter your options.\n");
+    printf("The options should be preceded by a '-'\n");
 }
 
 void printLinkMenu() {
@@ -31,6 +36,7 @@ void printLinkMenu() {
     printf("\tt - size of target file\n");
     printf("\ta - access rights\n");
     printf("Please enter your options.\n");
+    printf("The options should be preceded by a '-'\n");
 }
 
 void printAccessRights(struct stat status, char *filePath) {
@@ -53,12 +59,28 @@ void printAccessRights(struct stat status, char *filePath) {
 void processFileOptions(struct stat status, char *filePath) {
 
     char options[20];
+    int nrOfOptions;
+    int isValid;
 
-    if(scanf("%20s", options) != 1) {
-        perror("Scanf failed.\n");
-    }
+    do{
+        if(scanf("%20s", options) != 1) {
+            perror("Scanf failed.\n");
+        }
+        nrOfOptions = strlen(options);
 
-    int nrOfOptions = strlen(options);
+        for(int i = 1; i < nrOfOptions; i++) {
+            isValid = 1;
+            if(options[0] != '-' || !strchr("ndhmal", options[i])) {
+                printf("Please enter the correct options.\n");
+                isValid = 0;
+                break;
+            }
+        }
+        
+    }while(!isValid);
+
+
+
 
     //we will start iterating through the options starting from 1, since the first character inputed must be '-'
     for(int i = 1; i < nrOfOptions; i++) {
@@ -105,6 +127,7 @@ void processFileOptions(struct stat status, char *filePath) {
             }
 
             break;
+
         default:
             break;
         }
@@ -114,13 +137,29 @@ void processFileOptions(struct stat status, char *filePath) {
 void processLinkOptions(struct stat status, char *filePath) {
 
     char options[20];
+    int nrOfOptions;
+    int isValid;
 
     do{
-        printf("The options should be preceded by a '-'\n");
-        scanf("%20s", options);
-    }while(options[0] != '-');
+        
+        if(scanf("%20s", options) != 1) {
+            perror("Scanf failed.\n");
+        }
 
-    int nrOfOptions = strlen(options);
+        nrOfOptions = strlen(options);
+
+        for(int i = 1; i < nrOfOptions; i++) {
+            isValid = 1;
+            if(options[0] != '-' || !strchr("ndtal", options[i])) {
+                printf("Please enter the correct options.\n");
+                isValid = 0;
+                break;
+            }
+        }
+        
+    }while(!isValid);
+
+    
 
     int deleted = 0;
 
@@ -176,6 +215,75 @@ void processLinkOptions(struct stat status, char *filePath) {
 
 }
 
+void processDirectoryOptions(struct stat status, char *filePath) {
+
+    char options[20];
+
+    int nrOfOptions;
+    int isValid;
+
+    do{
+        
+        if(scanf("%20s", options) != 1) {
+            perror("Scanf failed.\n");
+        }
+        
+        nrOfOptions = strlen(options);
+
+        for(int i = 1; i < nrOfOptions; i++) {
+            isValid = 1;
+            if(options[0] != '-' || !strchr("ndac", options[i])) {
+                printf("Please enter the correct options.\n");
+                isValid = 0;
+                break;
+            }
+        }
+        
+    }while(!isValid);
+
+    //we will start iterating through the options starting from 1, since the first character inputed must be '-'
+    for(int i = 1; i < nrOfOptions; i++) {
+        switch (options[i])
+        {
+        case 'n':
+            printf("Name of file: %s\n", filePath);
+            break;
+
+
+        case 'd':
+            printf("File size: %ld bytes\n", status.st_size);
+            break;
+
+
+        case 'a':
+            printf("Access rights:");
+            printAccessRights(status, filePath);
+            break;
+
+//TO DO
+        case 'c':
+        /*
+            DIR* directory = opendir(filePath);
+            if(directory == NULL) {
+                perror("Could not open the directory.\n");
+                break;
+            }
+            
+            struct dirent *entry;
+            do{
+                entry = readdir(directory);
+                struct stat entryStat;
+                //if()
+            }while(entry != NULL);
+        */
+            break;
+
+        default:
+            break;
+        }
+    }
+}
+
 
 int main(int argc, char **argv) {
 
@@ -201,7 +309,7 @@ int main(int argc, char **argv) {
             printf("\n%s - DIRECTORY\n", argv[i]);
 
             printDirectoryMenu();
-            //processMenuOptions();
+            processDirectoryOptions(status, argv[i]);
 
         } else if (S_ISLNK(status.st_mode)) {
             printf("\n%s - SYMBOLIC LINK.\n", argv[i]);
