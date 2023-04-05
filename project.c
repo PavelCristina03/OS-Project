@@ -63,23 +63,33 @@ void processFileOptions(struct stat status, char *filePath) {
     int isValid;
 
     do{
+        if(!isValid) {
+            printFileMenu();
+        }
+        
         if(scanf("%20s", options) != 1) {
             perror("Scanf failed.\n");
         }
+        isValid = 1;
         nrOfOptions = strlen(options);
 
-        for(int i = 1; i < nrOfOptions; i++) {
-            isValid = 1;
-            if(options[0] != '-' || !strchr("ndhmal", options[i])) {
-                printf("Please enter the correct options.\n");
-                isValid = 0;
-                break;
+        if(options[0] != '-' || nrOfOptions < 2) {
+            printf("Please enter the correct options.\n");
+            isValid = 0;
+        }
+        else
+        {   
+            for(int i = 1; i < nrOfOptions; i++) {
+                if(!strchr("ndhmal", options[i])) {
+                    printf("Please enter the correct options.\n");
+                    isValid = 0;
+                    break;
+                }
             }
         }
+
         
     }while(!isValid);
-
-
 
 
     //we will start iterating through the options starting from 1, since the first character inputed must be '-'
@@ -139,28 +149,35 @@ void processLinkOptions(struct stat status, char *filePath) {
     char options[20];
     int nrOfOptions;
     int isValid;
-
     do{
+        if(!isValid) {
+            printLinkMenu();
+        }
         
         if(scanf("%20s", options) != 1) {
             perror("Scanf failed.\n");
         }
-
+        isValid = 1;
         nrOfOptions = strlen(options);
 
-        for(int i = 1; i < nrOfOptions; i++) {
-            isValid = 1;
-            if(options[0] != '-' || !strchr("ndtal", options[i])) {
-                printf("Please enter the correct options.\n");
-                isValid = 0;
-                break;
+        if(options[0] != '-' || nrOfOptions < 2) {
+            printf("Please enter the correct options.\n");
+            isValid = 0;
+        }
+        else
+        {   
+            for(int i = 1; i < nrOfOptions; i++) {
+                if(!strchr("ndtal", options[i])) {
+                    printf("Please enter the correct options.\n");
+                    isValid = 0;
+                    break;
+                }
             }
         }
+
         
     }while(!isValid);
-
     
-
     int deleted = 0;
 
     //we will start iterating through the options starting from 1, since the first character inputed must be '-'
@@ -223,21 +240,31 @@ void processDirectoryOptions(struct stat status, char *filePath) {
     int isValid;
 
     do{
+        if(!isValid) {
+            printDirectoryMenu();
+        }
         
         if(scanf("%20s", options) != 1) {
             perror("Scanf failed.\n");
         }
-        
+        isValid = 1;
         nrOfOptions = strlen(options);
 
-        for(int i = 1; i < nrOfOptions; i++) {
-            isValid = 1;
-            if(options[0] != '-' || !strchr("ndac", options[i])) {
-                printf("Please enter the correct options.\n");
-                isValid = 0;
-                break;
+        if(options[0] != '-' || nrOfOptions < 2) {
+            printf("Please enter the correct options.\n");
+            isValid = 0;
+        }
+        else
+        {   
+            for(int i = 1; i < nrOfOptions; i++) {
+                if(!strchr("ndac", options[i])) {
+                    printf("Please enter the correct options.\n");
+                    isValid = 0;
+                    break;
+                }
             }
         }
+
         
     }while(!isValid);
 
