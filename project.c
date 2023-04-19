@@ -288,21 +288,33 @@ void processDirectoryOptions(struct stat status, char *filePath) {
             break;
 
 //TO DO
-        case 'c':
-        /*
+        case 'c': ;
+        
             DIR* directory = opendir(filePath);
             if(directory == NULL) {
                 perror("Could not open the directory.\n");
                 break;
             }
             
+            int countC = 0;
             struct dirent *entry;
-            do{
-                entry = readdir(directory);
+
+            while((entry = readdir(directory)) != NULL) { 
+
                 struct stat entryStat;
-                //if()
-            }while(entry != NULL);
-        */
+                if(lstat(filePath, &entryStat) == -1) {
+                    perror("lstat failed.\n");
+                    break;
+                } 
+
+                
+                if(strstr(entry->d_name, ".c") != NULL) {
+                    countC++;
+                }
+                
+            }
+            printf("The number of C files in the directory is %d.\n", countC);
+        
             break;
 
         default:
