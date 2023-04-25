@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <sys/stat.h>
+#include <sys/wait.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
@@ -287,7 +288,6 @@ void processDirectoryOptions(struct stat status, char *filePath) {
             printAccessRights(status, filePath);
             break;
 
-//TO DO
         case 'c': ;
         
             DIR* directory = opendir(filePath);
@@ -307,8 +307,9 @@ void processDirectoryOptions(struct stat status, char *filePath) {
                     break;
                 } 
 
-                
-                if(strstr(entry->d_name, ".c") != NULL) {
+                int entryNameLength = strlen(entry->d_name);
+
+                if(entry->d_name[entryNameLength-2] == '.' && entry->d_name[entryNameLength-1] == 'c') {
                     countC++;
                 }
                 
@@ -333,32 +334,69 @@ int main(int argc, char **argv) {
 
     for(int i = 1; i < argc; i++) {
 
-        struct stat status;
-        if(lstat(argv[i], &status) == -1) {
-            perror("lstat failed.\n");
+        int pid = fork();
+
+        if (pid < 0) {
+            perror("fork");
+            exit(1);
         }
-        
-        if (S_ISREG(status.st_mode)) {
-            printf("\n%s - REGULAR FILE\n", argv[i]);
 
-            printFileMenu();
-            processFileOptions(status, argv[i]);
+        if(pid == 0) 
+        {
 
-        } else if (S_ISDIR(status.st_mode)) {
-            printf("\n%s - DIRECTORY\n", argv[i]);
+            struct stat status;
+            if(lstat(argv[i], &status) == -1) {
+                perror("lstat failed.\n");
+            }
+            
+            if (S_ISREG(status.st_mode)) {
+                printf("\n%s - REGULAR FILE\n", argv[i]);
 
-            printDirectoryMenu();
-            processDirectoryOptions(status, argv[i]);
+                //if we have a .c regular file we execute a script
+                //which prints the number of errors and warnings
+                if(strstr(argv[i], ".c") != NULL) {
+                    int pidc = fork();
+                    if(pidc == 0) {
+                        execl("/bin/bash", "bash", "filescript.sh", argv[i], NULL);
+                        exit(0);
+                    }
+                    wait(NULL);
+                }
 
-        } else if (S_ISLNK(status.st_mode)) {
-            printf("\n%s - SYMBOLIC LINK.\n", argv[i]);
+                printFileMenu();
+                processFileOptions(status, argv[i]);
 
-            printLinkMenu();
-            processLinkOptions(status, argv[i]);
 
-        } else {
-            printf("\n%s - UNKNOWN.\n", argv[i]);
+
+            } else if (S_ISDIR(status.st_mode)) {
+                printf("\n%s - DIRECTORY\n", argv[i]);
+
+                printDirectoryMenu();
+                processDirectoryOptions(status, argv[i]);
+
+                int pidc = fork();
+                if(pidc == 0) {
+                    char filename[1024];
+                    snprintf(filename, sizeof(filename), "%s_file.txt", argv[i]);
+                    execl("/bin/touch", "touch", filename, NULL);
+                    exit(0);
+                }
+
+                wait(NULL);
+
+            } else if (S_ISLNK(status.st_mode)) {
+                printf("\n%s - SYMBOLIC LINK.\n", argv[i]);
+
+                printLinkMenu();
+                processLinkOptions(status, argv[i]);
+
+            } else {
+                printf("\n%s - UNKNOWN.\n", argv[i]);
+            }
+
+            exit(0);
         }
+        wait(NULL);
     }
 
     printf("\n");
