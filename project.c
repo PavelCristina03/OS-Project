@@ -61,7 +61,7 @@ void processFileOptions(struct stat status, char *filePath) {
 
     char options[20];
     int nrOfOptions;
-    int isValid;
+    int isValid = 1;
 
     do{
         if(!isValid) {
@@ -149,7 +149,7 @@ void processLinkOptions(struct stat status, char *filePath) {
 
     char options[20];
     int nrOfOptions;
-    int isValid;
+    int isValid = 1;
     do{
         if(!isValid) {
             printLinkMenu();
@@ -238,7 +238,7 @@ void processDirectoryOptions(struct stat status, char *filePath) {
     char options[20];
 
     int nrOfOptions;
-    int isValid;
+    int isValid = 1;
 
     do{
         if(!isValid) {
@@ -341,8 +341,7 @@ int main(int argc, char **argv) {
             exit(1);
         }
 
-        if(pid == 0) 
-        {
+        if(pid == 0) {
 
             struct stat status;
             if(lstat(argv[i], &status) == -1) {
