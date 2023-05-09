@@ -324,6 +324,71 @@ void processDirectoryOptions(struct stat status, char *filePath) {
     }
 }
 
+void processArguments(struct stat status, char *filepath) {
+
+    int pid = fork();
+
+    if (pid < 0) {
+        perror("fork");
+        exit(1);
+    }
+
+    if (S_ISREG(status.st_mode))
+    {
+        if(pid == 0) {
+            // child process handles input
+            printf("\n%s - REGULAR FILE\n", filepath);
+
+            printFileMenu();
+            processFileOptions(status, filepath);
+            
+        } else { 
+
+        }
+
+    }
+    else if (S_ISDIR(status.st_mode))
+    {
+        if (pid == 0) {
+            // child process handles input
+            printf("\n%s - DIRECTORY\n", filepath);
+
+            printDirectoryMenu();
+            processDirectoryOptions(status, filepath);
+
+        } else {
+            // parent process creates a second child process
+            // which creates a new file with a formatted name
+            int pidc = fork();
+            if (pidc == 0)
+            {
+                char filename[1024];
+                snprintf(filename, sizeof(filename), "%s_file.txt", filepath);
+                execl("/bin/touch", "touch", filename, NULL);
+                exit(0);
+            }
+
+            wait(NULL);
+        }
+    }
+    else if (S_ISLNK(status.st_mode))
+    {
+        if(pid == 0) {
+            // child process handles input
+            printf("\n%s - SYMBOLIC LINK.\n", filepath);
+
+            printLinkMenu();
+            processLinkOptions(status, filepath);
+
+        } else {
+
+        }
+    }
+    else
+    {
+        printf("\n%s - UNKNOWN.\n", filepath);
+    }
+}
 
 int main(int argc, char **argv) {
 
@@ -334,69 +399,18 @@ int main(int argc, char **argv) {
 
     for(int i = 1; i < argc; i++) {
 
-        int pid = fork();
-
-        if (pid < 0) {
-            perror("fork");
-            exit(1);
+        struct stat status;
+        if(lstat(argv[i], &status) == -1) {
+            perror("lstat failed.\n");
         }
-
-        if(pid == 0) {
-
-            struct stat status;
-            if(lstat(argv[i], &status) == -1) {
-                perror("lstat failed.\n");
-            }
             
-            if (S_ISREG(status.st_mode)) {
-                printf("\n%s - REGULAR FILE\n", argv[i]);
-
-                //if we have a .c regular file we execute a script
-                //which prints the number of errors and warnings
-                if(strstr(argv[i], ".c") != NULL) {
-                    int pidc = fork();
-                    if(pidc == 0) {
-                        execl("/bin/bash", "bash", "filescript.sh", argv[i], NULL);
-                        exit(0);
-                    }
-                    wait(NULL);
-                }
-
-                printFileMenu();
-                processFileOptions(status, argv[i]);
+        processArguments(status, argv[i]);
 
 
-
-            } else if (S_ISDIR(status.st_mode)) {
-                printf("\n%s - DIRECTORY\n", argv[i]);
-
-                printDirectoryMenu();
-                processDirectoryOptions(status, argv[i]);
-
-                int pidc = fork();
-                if(pidc == 0) {
-                    char filename[1024];
-                    snprintf(filename, sizeof(filename), "%s_file.txt", argv[i]);
-                    execl("/bin/touch", "touch", filename, NULL);
-                    exit(0);
-                }
-
-                wait(NULL);
-
-            } else if (S_ISLNK(status.st_mode)) {
-                printf("\n%s - SYMBOLIC LINK.\n", argv[i]);
-
-                printLinkMenu();
-                processLinkOptions(status, argv[i]);
-
-            } else {
-                printf("\n%s - UNKNOWN.\n", argv[i]);
-            }
-
-            exit(0);
-        }
-        wait(NULL);
     }
+    /*
+
+    */
 
     printf("\n");
 
