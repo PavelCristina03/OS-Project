@@ -13,5 +13,4 @@ fi
 output=$(gcc -Wall -Wextra "$1" 2>&1)
 error_count=$(echo "$output" | grep -c 'error:')
 warning_count=$(echo "$output" | grep -c 'warning:')
-echo "Errors: $error_count"
-echo "Warnings: $warning_count"
+echo "$error_count $warning_count"
