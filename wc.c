@@ -13,6 +13,7 @@
 int main(void) {
     int pfd[2];
     int pid;
+    int unused, legitness;
 
     if(pipe(pfd) < 0) {
         perror("Pipe creation error!\n");

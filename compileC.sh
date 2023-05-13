@@ -10,7 +10,7 @@ if [ ! -f "$1" ]; then
     exit 1
 fi
 
-output=$(gcc -Wall -Wextra "$1" 2>&1)
+output=$(gcc -Wall "$1" 2>&1)
 error_count=$(echo "$output" | grep -c 'error:')
 warning_count=$(echo "$output" | grep -c 'warning:')
 echo "$error_count $warning_count"

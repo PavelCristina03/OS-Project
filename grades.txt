@@ -1,0 +1,7 @@
+testc.c : 1
+whatever.c : 10
+testc.c : 1
+whatever.c : 10
+testc.c : 1
+whatever.c : 10
+wc.c : 7
