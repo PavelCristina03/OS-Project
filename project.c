@@ -48,6 +48,35 @@ void printLinkMenu()
     printf("The options should be preceded by a '-'\n");
 }
 
+
+void handleTerminatedChildren()
+{
+    int status;
+    pid_t terminatedChild;
+
+    terminatedChild = wait(&status); 
+
+    while (terminatedChild > 0)
+    {
+        // loop until all child processes have terminated
+
+        if (WIFEXITED(status))
+        {
+            // check if the child process terminated normally
+            printf("\nThe child process with PID %d has finished successfully with exit code %d.\n", terminatedChild, WEXITSTATUS(status));
+        }
+        else
+        {
+            // if the child process terminated abnormally
+            printf("\nThe child process with PID %d has finished erroneously with exit code %d.\n", terminatedChild, WEXITSTATUS(status));
+        }
+
+        terminatedChild = wait(&status); // wait for the next child process to terminate
+    }
+}
+
+
+
 void printAccessRights(struct stat status, char *filePath)
 {
     printf("\nUser:\n");
@@ -65,6 +94,7 @@ void printAccessRights(struct stat status, char *filePath)
     printf("\tWrite - %s\n", (status.st_mode & S_IWOTH) ? "yes" : "no");
     printf("\tExecute - %s\n\n", (status.st_mode & S_IXOTH) ? "yes" : "no");
 }
+
 
 void processFileOptions(struct stat status, char *filePath)
 {
@@ -350,39 +380,168 @@ void processDirectoryOptions(struct stat status, char *filePath)
     }
 }
 
-int computeScore(int errors, int warnings) 
+
+
+
+int computeScore(int errors, int warnings)
 {
-    if(errors == 0 && warnings == 0) 
+    if (errors == 0 && warnings == 0)
     {
         return 10;
     }
-    else if(errors >= 1) 
+    else if (errors >= 1)
     {
         return 1;
     }
-    else if (errors == 0 && warnings > 10) 
+    else if (errors == 0 && warnings > 10)
     {
         return 2;
     }
 
-    return 2 + 8 * (10 - warnings)/10;
-    
+    return 2 + 8 * (10 - warnings) / 10;
 }
 
-void printLineCount(char* filepath)
+void printLineCount(char *filepath)
 {
-    printf("The number of lines: ");
     execlp("wc", "wc", "-l", filepath, NULL); // execute wc command
-    perror("execlp fauiled.\n"); 
+    perror("execlp failed.\n");
     exit(EXIT_FAILURE); // if this part is executed at all it means exec failed
 }
 
-void compileCFile(char* filepath)
+void handleRegFile(struct stat st, char *filepath)
 {
-    execlp("bash", "bash", "compileC.sh", filepath, NULL);
-    perror("execlp failed.\n");
-    exit(EXIT_FAILURE); //if this line is reached execlp failed
+
+    //sleep(1);
+    pid_t pidRegFile;
+    int pfd[2];
+
+    if (pipe(pfd) < 0)
+    {
+        perror("\nPipe creation failed.\n");
+        exit(EXIT_FAILURE);
+    }
+
+    if ((pidRegFile = fork()) < 0)
+    {
+        perror("\nChild process creation failed.\n");
+        exit(EXIT_FAILURE);
+    }
+
+    else if (pidRegFile == 0)
+    {
+        // child process => write to pipe
+        close(pfd[0]); //close read end of pipe
+
+        if (strstr(filepath, ".c"))
+        {
+            //c file => execute a script which compiles the C file and prints to stdout the nr of errors and the nr of warnings
+            dup2(pfd[1], STDOUT_FILENO); //redirect stdout to write end of pipe
+
+            execlp("bash", "bash", "compileC.sh", filepath, NULL);
+            perror("execlp failed.\n"); //if this line is reached exec has failed to execute properly
+            exit(EXIT_FAILURE);
+
+        }
+
+        else
+        {
+            printf("\nThe number of lines: ");
+            printLineCount(filepath);
+
+        }
+        exit(EXIT_SUCCESS);
+    }
+
+    else if (pidRegFile > 0)
+    {
+
+        if (strstr(filepath, ".c"))
+        {
+
+            int errors = 0, warnings = 0, score = 0;
+
+            close(pfd[1]);
+
+            FILE *stream = fdopen(pfd[0], "r");
+            ;
+
+            fscanf(stream, "%d %d", &errors, &warnings);
+            printf("Errors: %d\nWarnings: %d\n", errors, warnings);
+
+            score = computeScore(errors, warnings);
+
+            int fd = open("grades.txt", O_RDWR | O_APPEND | O_CREAT, S_IRWXU);
+
+            if (fd == -1)
+            {
+                perror("Error opening file.\n");
+                exit(EXIT_FAILURE);
+            }
+
+            char filename[1000], string[1024];
+
+            snprintf(filename, sizeof(filename), "%s", filepath);
+            sprintf(string, "%s : %d\n", filename, score);
+            write(fd, string, strlen(string));
+            close(fd);
+            close(pfd[0]);
+        }
+        handleTerminatedChildren();
+    }
 }
+
+void createTxtFile(struct stat st, char *filepath)
+{
+
+    pid_t pid;
+
+    if ((pid = fork()) < 0)
+    {
+        perror("\nfork failed.\n");
+        exit(EXIT_FAILURE);
+    }
+
+    if (pid == 0)
+    {
+        char filename[1024];
+        snprintf(filename, sizeof(filename), "%s/%s_file.txt", filepath, filepath); //format file name to dirname_file.txt
+        execlp("touch", "touch", filename, NULL);
+        perror("\nexeclp failed.\n");
+        exit(EXIT_FAILURE);
+
+    }
+
+    else if (pid > 0)
+    {
+        handleTerminatedChildren();
+    }
+}
+
+void changeLinkRights(struct stat status, char *link)
+{
+    pid_t pid;
+
+    if ((pid = fork()) < 0)
+    {
+        perror("\nfork failed.\n");
+        exit(EXIT_FAILURE);
+    }
+
+    if (pid == 0)
+    {
+        execlp("chmod", "chmod", "u+rwx,g+rw-x,o-rwx", link, NULL);
+        perror("\nexec failed.\n");
+        exit(EXIT_FAILURE);
+
+    }
+
+    else if (pid > 0)
+    {
+        handleTerminatedChildren();
+    }
+}
+
+
 
 void processArguments(struct stat status, char *filepath)
 {
@@ -393,15 +552,13 @@ void processArguments(struct stat status, char *filepath)
         printf("\n%s - REGULAR FILE\n", filepath);
         printFileMenu();
         processFileOptions(status, filepath);
-
-    }    
+    }
     else if (S_ISDIR(status.st_mode))
     {
 
         printf("\n%s - DIRECTORY\n", filepath);
         printDirectoryMenu();
         processDirectoryOptions(status, filepath);
-        
     }
     else if (S_ISLNK(status.st_mode))
     {
@@ -409,7 +566,6 @@ void processArguments(struct stat status, char *filepath)
         printf("\n%s - SYMBOLIC LINK.\n", filepath);
         printLinkMenu();
         processLinkOptions(status, filepath);
-
     }
     else
     {
@@ -417,126 +573,27 @@ void processArguments(struct stat status, char *filepath)
     }
 }
 
-void handleProcesses(struct stat status, char *filepath, int pidProcesses)
+void handleProcesses(struct stat status, char *filepath)
 {
-
-    int pfd[2];
-
-    if(pipe(pfd) < 0) {
-        perror("Pipe creation failed.\n");
-        exit(1);
-    }
-
     if (S_ISREG(status.st_mode))
     {
 
-        if(pidProcesses == 0) 
-        {
-            //child process for regular files will write to pipe
-            if(strstr(filepath, ".c")) 
-            {
-                //c file => run a script which counts the number of errors and the number of warnings
-                close(pfd[0]); //close read end of pipe
-                dup2(pfd[1], STDOUT_FILENO); //redirect stdout to wrtie end of pipe
-                compileCFile(filepath);
-                close(pfd[1]); //close write end when done
-            }
-            else
-            {
-                //non c file => count the number of lines
-                printLineCount(filepath);
-            }
+        handleRegFile(status, filepath);
 
-        }
-        else if(pidProcesses > 0 && strstr(filepath, ".c")) 
-        {
-            //parent process will read from pipe 
-            //c file => compute a score based on the number of errors and the number of warnings and print it to grades.txt
-            close(pfd[1]); //close write end of pipe
-            FILE* pipeStream = fdopen(pfd[0],"r"); //read from pipe using fdopen
-
-            int errors = 0, warnings = 0;
-            
-            fscanf(pipeStream, "%d %d", &errors, &warnings);
-            printf("Errors: %d\nWarnings: %d\n", errors, warnings);
-
-            int score = computeScore(errors, warnings);
-            char scoreBuffer[20] = "";
-            int result = snprintf(scoreBuffer, sizeof(scoreBuffer), "%s - %d\n", filepath, score);
-
-            if (result < 0) {
-                perror("snprintf failed.\n");
-                return 1;
-            }
-
-            int fdScore = open("grades.txt", O_WRONLY | O_CREAT | O_APPEND, S_IRUSR | S_IWUSR);
-                    if (fdScore == -1) {
-                        perror("open failed.\n");
-                        exit(EXIT_FAILURE);
-                    }
-                    if (write(fdScore, scoreBuffer, strlen(scoreBuffer)) == -1) {
-                        perror("write failed.\n");
-                        exit(EXIT_FAILURE);
-                    }
-
-            close(fdScore);
-
-        }
-        handleTerminatedChildren();
-
-    }    
+    }
     else if (S_ISDIR(status.st_mode))
     {
 
-        if(pidProcesses == 0) 
-        {
+        createTxtFile(status, filepath);
 
-        }
-        else if(pidProcesses > 0) 
-        {
-
-        }
-        
     }
     else if (S_ISLNK(status.st_mode))
     {
-        if(pidProcesses == 0) 
-        {
 
-        }
-        else if(pidProcesses > 0) 
-        {
-
-        }
+        changeLinkRights(status, filepath);
 
     }
 
-}
-
-void handleTerminatedChildren()
-{
-    int status;
-    pid_t terminatedChild;
-
-    terminatedChild = wait(&status); //wait for child process to terminate and get its exit status
-
-    while(terminatedChild > 0)
-    {   
-        // loop until all child processes have terminated
-
-        if(WIFEXITED(status))
-        {      
-            // check if the child process terminated normally
-            printf("\nThe child process with PID %d has finished successfully with exit code %d.\n\n", terminatedChild, WEXITSTATUS(status));
-        }
-        else
-        {                       
-            // if the child process terminated abnormally
-            printf("\nThe child process with PID %d has finished abnormally with exit code %d.\n\n", terminatedChild, WEXITSTATUS(status));
-        }
-
-        terminatedChild = wait(&status);  // wait for the next child process to terminate and get its PID and exit status
-    }
 }
 
 int main(int argc, char **argv)
@@ -557,31 +614,24 @@ int main(int argc, char **argv)
             perror("lstat failed.\n");
         }
 
-        int pidOptions = fork();
-        if(pidOptions < 0) 
+        pid_t pid;
+
+        if ((pid = fork()) < 0)
         {
-            perror("\nOption fork failed.\n");
+            perror("\nFork failed.\n");
             exit(EXIT_FAILURE);
         }
-
-        else if(pidOptions == 0) 
+        if (pid == 0)
         {
             processArguments(status, argv[i]);
-            exit(EXIT_SUCCESS);
+            exit(0);
         }
-
-        // this check might be unnecessary as the 1st child process has terminated by the time this code is reached
-        else if (pidOptions > 0) 
+        else if(pid > 0) 
         {
-            int pidProcesses = fork();
-            if(pidProcesses < 0) 
-            {
-                perror("Process fork failed.\n");
-                exit(EXIT_FAILURE);
-            }
-            handleProcesses(status, argv[i], pidProcesses);
+            //wait(NULL);
+            handleProcesses(status, argv[i]);
+            handleTerminatedChildren();
         }
-
     }
     /*
 
