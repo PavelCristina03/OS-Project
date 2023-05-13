@@ -1,11 +1,16 @@
 #include <stdio.h>
-#include <sys/stat.h>
-#include <sys/wait.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
+#include <sys/wait.h>
+#include <sys/types.h>
 #include <time.h>
 #include <unistd.h>
 #include <dirent.h>
+#include <pwd.h>
+#include <grp.h>
+#include <errno.h>
+#include <fcntl.h>
 
 void printFileMenu()
 {
@@ -364,154 +369,174 @@ int computeScore(int errors, int warnings)
     
 }
 
+void printLineCount(char* filepath)
+{
+    printf("The number of lines: ");
+    execlp("wc", "wc", "-l", filepath, NULL); // execute wc command
+    perror("execlp fauiled.\n"); 
+    exit(EXIT_FAILURE); // if this part is executed at all it means exec failed
+}
+
+void compileCFile(char* filepath)
+{
+    execlp("bash", "bash", "compileC.sh", filepath, NULL);
+    perror("execlp failed.\n");
+    exit(EXIT_FAILURE); //if this line is reached execlp failed
+}
+
 void processArguments(struct stat status, char *filepath)
 {
 
-    int pid = fork();
-
-    if (pid < 0)
-    {
-        perror("fork\n");
-        exit(1);
-    }
-
     if (S_ISREG(status.st_mode))
     {
-        if (pid == 0)
-        {
-            // child process handles input
-            printf("\n%s - REGULAR FILE\n", filepath);
 
-            printFileMenu();
-            processFileOptions(status, filepath);
-            exit(0);
-        }
-        else
-        {
-            // parent process creates a 2nd child process
+        printf("\n%s - REGULAR FILE\n", filepath);
+        printFileMenu();
+        processFileOptions(status, filepath);
 
-            int pfd[2];
-
-            if(pipe(pfd) < 0) {
-                perror("pipe\n");
-                exit(1);
-            }
-
-            int pidc = fork();
-
-            if(pidc < 0) {
-                perror("fork\n");
-                exit(1);
-            }
-
-            if (pidc == 0)
-            {
-                close(pfd[0]); //close read end of pipe, child will write
-                dup2(pfd[1], STDOUT_FILENO); //duplicate write end of pipe to stdout
-                close(pfd[1]); //close original write end of pipe
-
-                if (strstr(filepath, ".c") != NULL)
-                {
-                    // if we have a .c regular file we execute a script
-                    // which prints the number of errors and warnings
-                    //printf("c ");
-                    execl("/bin/bash", "bash", "filescript.sh", filepath, NULL);
-                    perror("execl failed\n");
-                    exit(1);
-                }
-                else
-                {
-                    // otherwise, count the number of lines
-
-                    execlp("wc", "wc", "-l", NULL);
-                    perror("execl failed\n");
-                    exit(1);
-                }
-
-                exit(0);
-            }
-            else
-            {
-                // Parent process
-                // Read output from pipe
-                close(pfd[1]); // Close write end of pipe, parent will read
-
-                int num1, num2, isCFile = 0;
-                char buffer[20] = "";
-
-                read(pfd[0], buffer, 20);
-                //printf("buffer: %s\n", buffer);
-                //sscanf(buffer, "%d", &isCFile);
-
-
-                if (isCFile) 
-                {
-                    sscanf(buffer, "%d %d", &num1, &num2);
-                    printf("Errors: %d\nWarnings: %d\n\n", num1, num2);
-                    printf("The score is: %d", computeScore(num1, num2));
-                }
-                else
-                {
-                    sscanf(buffer, "%d", &num1);
-                    printf("lines: %d\n\n", num1);
-                }
-
-
-
-                // Wait for child process to finish
-            }
-            wait(NULL);
-        }
-    }
+    }    
     else if (S_ISDIR(status.st_mode))
     {
-        if (pid == 0)
-        {
-            // child process handles input
-            printf("\n%s - DIRECTORY\n", filepath);
 
-            printDirectoryMenu();
-            processDirectoryOptions(status, filepath);
-            exit(0);
-        }
-        else
-        {
-            // parent process creates a second child process
-            // which creates a new file with a formatted name
-            int pidc = fork();
-            if (pidc == 0)
-            {
-                char filename[1024];
-                snprintf(filename, sizeof(filename), "%s_file.txt", filepath);
-                execl("/bin/touch", "touch", filename, NULL);
-                exit(0);
-            }
-
-            
-        }
+        printf("\n%s - DIRECTORY\n", filepath);
+        printDirectoryMenu();
+        processDirectoryOptions(status, filepath);
         
-       wait(NULL);
     }
     else if (S_ISLNK(status.st_mode))
     {
-        if (pid == 0)
-        {
-            // child process handles input
-            printf("\n%s - SYMBOLIC LINK.\n", filepath);
 
-            printLinkMenu();
-            processLinkOptions(status, filepath);
-            exit(0);
-        }
-        else
-        {
-        }
+        printf("\n%s - SYMBOLIC LINK.\n", filepath);
+        printLinkMenu();
+        processLinkOptions(status, filepath);
+
     }
     else
     {
         printf("\n%s - UNKNOWN.\n", filepath);
     }
-    wait(NULL);
+}
+
+void handleProcesses(struct stat status, char *filepath, int pidProcesses)
+{
+
+    int pfd[2];
+
+    if(pipe(pfd) < 0) {
+        perror("Pipe creation failed.\n");
+        exit(1);
+    }
+
+    if (S_ISREG(status.st_mode))
+    {
+
+        if(pidProcesses == 0) 
+        {
+            //child process for regular files will write to pipe
+            if(strstr(filepath, ".c")) 
+            {
+                //c file => run a script which counts the number of errors and the number of warnings
+                close(pfd[0]); //close read end of pipe
+                dup2(pfd[1], STDOUT_FILENO); //redirect stdout to wrtie end of pipe
+                compileCFile(filepath);
+                close(pfd[1]); //close write end when done
+            }
+            else
+            {
+                //non c file => count the number of lines
+                printLineCount(filepath);
+            }
+
+        }
+        else if(pidProcesses > 0 && strstr(filepath, ".c")) 
+        {
+            //parent process will read from pipe 
+            //c file => compute a score based on the number of errors and the number of warnings and print it to grades.txt
+            close(pfd[1]); //close write end of pipe
+            FILE* pipeStream = fdopen(pfd[0],"r"); //read from pipe using fdopen
+
+            int errors = 0, warnings = 0;
+            
+            fscanf(pipeStream, "%d %d", &errors, &warnings);
+            printf("Errors: %d\nWarnings: %d\n", errors, warnings);
+
+            int score = computeScore(errors, warnings);
+            char scoreBuffer[20] = "";
+            int result = snprintf(scoreBuffer, sizeof(scoreBuffer), "%s - %d\n", filepath, score);
+
+            if (result < 0) {
+                perror("snprintf failed.\n");
+                return 1;
+            }
+
+            int fdScore = open("grades.txt", O_WRONLY | O_CREAT | O_APPEND, S_IRUSR | S_IWUSR);
+                    if (fdScore == -1) {
+                        perror("open failed.\n");
+                        exit(EXIT_FAILURE);
+                    }
+                    if (write(fdScore, scoreBuffer, strlen(scoreBuffer)) == -1) {
+                        perror("write failed.\n");
+                        exit(EXIT_FAILURE);
+                    }
+
+            close(fdScore);
+
+        }
+        handleTerminatedChildren();
+
+    }    
+    else if (S_ISDIR(status.st_mode))
+    {
+
+        if(pidProcesses == 0) 
+        {
+
+        }
+        else if(pidProcesses > 0) 
+        {
+
+        }
+        
+    }
+    else if (S_ISLNK(status.st_mode))
+    {
+        if(pidProcesses == 0) 
+        {
+
+        }
+        else if(pidProcesses > 0) 
+        {
+
+        }
+
+    }
+
+}
+
+void handleTerminatedChildren()
+{
+    int status;
+    pid_t terminatedChild;
+
+    terminatedChild = wait(&status); //wait for child process to terminate and get its exit status
+
+    while(terminatedChild > 0)
+    {   
+        // loop until all child processes have terminated
+
+        if(WIFEXITED(status))
+        {      
+            // check if the child process terminated normally
+            printf("\nThe child process with PID %d has finished successfully with exit code %d.\n\n", terminatedChild, WEXITSTATUS(status));
+        }
+        else
+        {                       
+            // if the child process terminated abnormally
+            printf("\nThe child process with PID %d has finished abnormally with exit code %d.\n\n", terminatedChild, WEXITSTATUS(status));
+        }
+
+        terminatedChild = wait(&status);  // wait for the next child process to terminate and get its PID and exit status
+    }
 }
 
 int main(int argc, char **argv)
@@ -532,7 +557,31 @@ int main(int argc, char **argv)
             perror("lstat failed.\n");
         }
 
-        processArguments(status, argv[i]);
+        int pidOptions = fork();
+        if(pidOptions < 0) 
+        {
+            perror("\nOption fork failed.\n");
+            exit(EXIT_FAILURE);
+        }
+
+        else if(pidOptions == 0) 
+        {
+            processArguments(status, argv[i]);
+            exit(EXIT_SUCCESS);
+        }
+
+        // this check might be unnecessary as the 1st child process has terminated by the time this code is reached
+        else if (pidOptions > 0) 
+        {
+            int pidProcesses = fork();
+            if(pidProcesses < 0) 
+            {
+                perror("Process fork failed.\n");
+                exit(EXIT_FAILURE);
+            }
+            handleProcesses(status, argv[i], pidProcesses);
+        }
+
     }
     /*
 
